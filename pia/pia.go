@@ -186,16 +186,25 @@ func (p *PIAClient) GetToken() (string, error) {
 	return tokenResp.Token, nil
 }
 
-// GetAvailableRegions returns all available regions
-func (p *PIAClient) GetAvailableRegions() (map[Region]string, error) {
+// RegionInfo holds metadata about a PIA region returned by GetAvailableRegions.
+type RegionInfo struct {
+	Name        string
+	PortForward bool
+}
+
+// GetAvailableRegions returns all available regions with their metadata.
+func (p *PIAClient) GetAvailableRegions() (map[Region]RegionInfo, error) {
 	serverList, err := p.getServerList()
 	if err != nil {
 		return nil, err
 	}
 
-	regions := make(map[Region]string)
+	regions := make(map[Region]RegionInfo)
 	for _, r := range serverList.Regions {
-		regions[Region(r.ID)] = r.Name
+		regions[Region(r.ID)] = RegionInfo{
+			Name:        r.Name,
+			PortForward: r.PortForward,
+		}
 	}
 
 	return regions, nil

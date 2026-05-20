@@ -33,8 +33,14 @@ func main() {
 			{
 				Name:    "regions",
 				Aliases: []string{"r"},
-				Usage:   "List all available PIA regions",
+				Usage:   "List available PIA regions. Use --port-forward to limit to regions that support port forwarding.",
 				Action:  listRegions,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "port-forward",
+						Usage: "Only show regions that support port forwarding",
+					},
+				},
 			},
 		},
 
@@ -180,7 +186,13 @@ func defaultAction(c *cli.Context) error {
 }
 
 func listRegions(c *cli.Context) error {
-	fmt.Println("Fetching available regions from PIA...")
+	portForwardOnly := c.Bool("port-forward")
+
+	if portForwardOnly {
+		fmt.Println("Fetching available regions from PIA (port-forwarding only)...")
+	} else {
+		fmt.Println("Fetching available regions from PIA...")
+	}
 
 	// Create a dummy client just to get the server list (no credentials or CA cert required)
 	piaClient, err := pia.NewPIAClient("", "", "us_california", "", false)
@@ -195,13 +207,21 @@ func listRegions(c *cli.Context) error {
 
 	// Sort regions for consistent output
 	var regionList []string
-	for region := range regions {
+	for region, info := range regions {
+		if portForwardOnly && !info.PortForward {
+			continue
+		}
 		regionList = append(regionList, string(region))
 	}
 	sort.Strings(regionList)
 
-	fmt.Println("\nAvailable PIA regions:")
-	fmt.Println("======================")
+	if portForwardOnly {
+		fmt.Println("\nPIA regions with port forwarding:")
+		fmt.Println("===================================")
+	} else {
+		fmt.Println("\nAvailable PIA regions:")
+		fmt.Println("======================")
+	}
 	for _, region := range regionList {
 		fmt.Printf("  %s\n", region)
 	}
