@@ -1,14 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
-	"github.com/kylegrantlucas/pia-wg-config/pia"
+	"pia-wg-config/pia"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -42,6 +44,32 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:  "port-forward",
+				Usage: "Bind and keep alive a PIA port forward (run after the WireGuard tunnel is up)",
+				Description: "Reads the port-forward state file written during config generation, calls\n" +
+					"/getSignature to obtain an assigned port, then calls /bindPort every 15 minutes\n" +
+					"to keep the forwarded port alive. The tunnel must be active before running this.",
+				Action: portForwardAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "pf-state-file",
+						Aliases:  []string{"s"},
+						Usage:    "Port-forward state `FILE` written by config generation (required)",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:    "ca-cert",
+						Aliases: []string{"c"},
+						Usage:   "Path to PIA CA cert pem `FILE` (optional, auto-downloaded if omitted)",
+					},
+					&cli.BoolFlag{
+						Name:    "verbose",
+						Aliases: []string{"v"},
+						Usage:   "Print verbose output",
+					},
+				},
+			},
 		},
 
 		Flags: []cli.Flag{
@@ -66,6 +94,11 @@ func main() {
 				Name:    "ca-cert",
 				Aliases: []string{"c"},
 				Usage:   "Path to a locally-trusted PIA ca cert pem `FILE`. If omitted, the cert is fetched from GitHub and verified against a pinned SHA-256 fingerprint.",
+			},
+			&cli.StringFlag{
+				Name:    "pf-state-file",
+				Aliases: []string{"s"},
+				Usage:   "Save port-forward state to `FILE` for use with the 'port-forward' command after connecting",
 			},
 		},
 	}
@@ -117,6 +150,20 @@ func defaultAction(c *cli.Context) error {
 	verbose := c.Bool("verbose")
 	region := c.String("region")
 	caCertPath := c.String("ca-cert")
+	pfStateFile := c.String("pf-state-file")
+
+	// Capture PF state inside the callback so Generate() can pass it back.
+	var pfState *pia.PortForwardState
+	var onPFStateReady func(token, serverCN, serverVip string)
+	if pfStateFile != "" {
+		onPFStateReady = func(token, serverCN, serverVip string) {
+			pfState = &pia.PortForwardState{
+				Token:     token,
+				ServerCN:  serverCN,
+				ServerVip: serverVip,
+			}
+		}
+	}
 
 	// create pia client
 	if verbose {
@@ -145,7 +192,10 @@ func defaultAction(c *cli.Context) error {
 	if verbose {
 		log.Print("creating wg config generator")
 	}
-	wgConfigGenerator := pia.NewPIAWgGenerator(piaClient, pia.PIAWgGeneratorConfig{Verbose: verbose})
+	wgConfigGenerator := pia.NewPIAWgGenerator(piaClient, pia.PIAWgGeneratorConfig{
+		Verbose:        verbose,
+		OnPFStateReady: onPFStateReady,
+	})
 
 	// generate wg config
 	if verbose {
@@ -180,6 +230,22 @@ func defaultAction(c *cli.Context) error {
 	} else {
 		// print config to stdout
 		fmt.Println(config)
+	}
+
+	// Write port-forward state file if requested.
+	if pfStateFile != "" && pfState != nil {
+		data, err := json.Marshal(pfState)
+		if err != nil {
+			return cli.Exit(fmt.Sprintf("Error: Failed to encode port-forward state: %v", err), 1)
+		}
+		if err := os.WriteFile(pfStateFile, data, 0600); err != nil {
+			return cli.Exit(fmt.Sprintf("Error: Failed to write port-forward state to '%s': %v", pfStateFile, err), 1)
+		}
+		if verbose {
+			log.Printf("Port-forward state written to: %s", pfStateFile)
+		}
+		fmt.Printf("✓ Port-forward state saved: %s\n", pfStateFile)
+		fmt.Printf("  After connecting, run: pia-wg-config port-forward --pf-state-file %s\n", pfStateFile)
 	}
 
 	return nil
@@ -230,4 +296,54 @@ func listRegions(c *cli.Context) error {
 	fmt.Println("  pia-wg-config -r uk_london USERNAME PASSWORD")
 
 	return nil
+}
+
+func portForwardAction(c *cli.Context) error {
+	pfStateFile := c.String("pf-state-file")
+	caCertPath := c.String("ca-cert")
+	verbose := c.Bool("verbose")
+
+	// Read the port-forward state file written during config generation.
+	data, err := os.ReadFile(pfStateFile)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Error: Failed to read port-forward state file '%s': %v", pfStateFile, err), 1)
+	}
+	var state pia.PortForwardState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return cli.Exit(fmt.Sprintf("Error: Failed to parse port-forward state file: %v", err), 1)
+	}
+	if state.Token == "" || state.ServerCN == "" || state.ServerVip == "" {
+		return cli.Exit("Error: Port-forward state file is incomplete (missing token, server_cn, or server_vip)", 1)
+	}
+
+	piaClient, err := pia.NewPIAClientForPortForward(caCertPath, verbose)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Error: Failed to initialise PIA client: %v", err), 1)
+	}
+
+	fmt.Printf("Requesting port-forward signature from %s (%s)...\n", state.ServerCN, state.ServerVip)
+	payload, signature, err := piaClient.GetPortForwardSignature(state)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Error: Failed to get port-forward signature: %v\n"+
+			"Make sure the WireGuard tunnel is active before running this command.", err), 1)
+	}
+
+	pfPayload, err := pia.DecodePortForwardPayload(payload)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Error: Failed to decode port-forward payload: %v", err), 1)
+	}
+
+	fmt.Printf("Assigned port %d (expires %s)\n", pfPayload.Port, pfPayload.ExpiresAt)
+	fmt.Println("Binding port and keeping it alive (Ctrl-C to stop)...")
+
+	// Bind immediately, then refresh every 15 minutes.
+	for {
+		if err := piaClient.BindPort(state, payload, signature); err != nil {
+			fmt.Printf("Warning: bindPort failed: %v — retrying next cycle\n", err)
+		} else {
+			fmt.Printf("Bound port %d (refreshes %s)\n",
+				pfPayload.Port, time.Now().Add(15*time.Minute).Format("15:04:05"))
+		}
+		time.Sleep(15 * time.Minute)
+	}
 }

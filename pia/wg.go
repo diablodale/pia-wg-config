@@ -12,16 +12,20 @@ import (
 )
 
 type PIAWgGenerator struct {
-	pia        PIAWgClient
-	verbose    bool
-	privatekey string
-	publickey  string
+	pia            PIAWgClient
+	verbose        bool
+	privatekey     string
+	publickey      string
+	onPFStateReady func(token, serverCN, serverVip string)
 }
 
 type PIAWgGeneratorConfig struct {
 	Verbose    bool
 	PrivateKey string
 	PublicKey  string
+	// OnPFStateReady is called after AddKey succeeds, providing the data needed to
+	// construct a PortForwardState. Set this when --pf-state-file is requested.
+	OnPFStateReady func(token, serverCN, serverVip string)
 }
 
 type templateConfig struct {
@@ -36,10 +40,11 @@ type templateConfig struct {
 
 func NewPIAWgGenerator(pia PIAWgClient, config PIAWgGeneratorConfig) *PIAWgGenerator {
 	return &PIAWgGenerator{
-		pia:        pia,
-		verbose:    config.Verbose,
-		privatekey: config.PrivateKey,
-		publickey:  config.PublicKey,
+		pia:            pia,
+		verbose:        config.Verbose,
+		privatekey:     config.PrivateKey,
+		publickey:      config.PublicKey,
+		onPFStateReady: config.OnPFStateReady,
 	}
 }
 
@@ -70,6 +75,15 @@ func (p *PIAWgGenerator) Generate() (string, error) {
 	key, err := p.pia.AddKey(token, publickey)
 	if err != nil {
 		return "", errors.Wrap(err, "error adding Wireguard publickey to PIA account")
+	}
+
+	// Populate port-forward state if the caller requested it.
+	if p.onPFStateReady != nil {
+		serverCN := ""
+		if cn, ok := p.pia.(interface{ ActiveServerCN() string }); ok {
+			serverCN = cn.ActiveServerCN()
+		}
+		p.onPFStateReady(token, serverCN, key.ServerVip)
 	}
 	if p.verbose {
 		log.Printf("Server IP:   %s", key.ServerIP)

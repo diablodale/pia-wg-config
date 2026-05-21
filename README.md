@@ -2,7 +2,7 @@
 
 A fast, portable Wireguard config generator for Private Internet Access (PIA) VPN.
 
-[![Go Version](https://img.shields.io/github/go-mod/go-version/kylegrantlucas/pia-wg-config)](https://golang.org/doc/devel/release.html)
+[![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/doc/devel/release)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🌍 Region Selection (NOT Hardcoded!)
@@ -58,7 +58,7 @@ source ~/.zshenv
 ### Install pia-wg-config
 
 ```bash
-go install github.com/kylegrantlucas/pia-wg-config@latest
+go build -o pia-wg-config .
 ```
 
 ### Basic Usage
@@ -169,20 +169,20 @@ done
 
 ### Docker Usage
 ```dockerfile
-FROM golang:alpine AS builder
-RUN go install github.com/kylegrantlucas/pia-wg-config@latest
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+COPY . .
+RUN go build -o /usr/local/bin/pia-wg-config .
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates wireguard-tools
-COPY --from=builder /go/bin/pia-wg-config /usr/local/bin/
+COPY --from=builder /usr/local/bin/pia-wg-config /usr/local/bin/
 ENTRYPOINT ["pia-wg-config"]
 ```
 
 ## 🏗️ Building from Source
 
 ```bash
-git clone https://github.com/kylegrantlucas/pia-wg-config
-cd pia-wg-config
 go build -o pia-wg-config .
 ```
 
@@ -207,9 +207,9 @@ go build -o pia-wg-config .
 
 ### Getting Help
 
-1. Check the [Issues](https://github.com/kylegrantlucas/pia-wg-config/issues) page
-2. Run with `-v` flag for detailed output
-3. Verify your PIA account is active
+1. Run with `-v` flag for detailed output
+2. Verify your PIA account is active
+3. Search the repository history for recent changes
 
 ## 🤝 Contributing
 
@@ -217,15 +217,13 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ### Development Setup
 ```bash
-git clone https://github.com/kylegrantlucas/pia-wg-config
-cd pia-wg-config
 go mod download
 go test ./...
 ```
 
 ## 📋 Requirements
 
-- Go 1.23 or later (for building)
+- Go 1.25 or later (for building)
 - Active PIA subscription
 - Wireguard client (for using generated configs)
 

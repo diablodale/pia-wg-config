@@ -1,0 +1,85 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Tests (Docker)",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"run",
+				"--rm",
+				"-v",
+				"${workspaceFolder}:/workspace",
+				"-w",
+				"/workspace",
+				"mcr.microsoft.com/devcontainers/go:2-1.25-trixie",
+				"go",
+				"test",
+				"-v",
+				"-buildvcs=false",
+				"./..."
+			],
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": ["$go"]
+		},
+		{
+			"label": "Run All Checks (Docker)",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"run",
+				"--rm",
+				"-v",
+				"${workspaceFolder}:/workspace",
+				"-w",
+				"/workspace",
+				"mcr.microsoft.com/devcontainers/go:2-1.25-trixie",
+				"sh",
+				"-c",
+				"gofmt -s -w . && go vet ./... && go test -v -buildvcs=false ./..."
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": ["$go"]
+		},
+		{
+			"label": "Run Coverage (Docker)",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"run",
+				"--rm",
+				"-v",
+				"${workspaceFolder}:/workspace",
+				"-w",
+				"/workspace",
+				"mcr.microsoft.com/devcontainers/go:2-1.25-trixie",
+				"sh",
+				"-c",
+				"go test -coverprofile=coverage.out -buildvcs=false ./... && go tool cover -html=coverage.out -o coverage.html"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": ["$go"]
+		}
+	]
+}

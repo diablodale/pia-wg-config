@@ -18,8 +18,11 @@ GOFMT=gofmt
 GOLINT=golint
 GOVET=$(GOCMD) vet
 
+# Docker image for Go development
+DOCKER_IMAGE=mcr.microsoft.com/devcontainers/go:2-1.25-trixie
+
 # Build targets
-.PHONY: all build clean test coverage lint fmt vet check install uninstall deps tidy help
+.PHONY: all build clean test test-docker coverage coverage-docker lint fmt vet check check-docker install uninstall deps tidy help
 
 # Default target
 all: check build
@@ -59,11 +62,24 @@ test:
 	@echo "Running tests..."
 	$(GOTEST) -v ./...
 
+# Run tests in Docker container
+test-docker:
+	@echo "Running tests in Docker..."
+	docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE) $(GOTEST) -v -buildvcs=false ./...
+	@echo "✓ Tests passed"
+
 # Run tests with coverage
 coverage:
 	@echo "Running tests with coverage..."
 	$(GOTEST) -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@echo "✓ Coverage report generated: coverage.html"
+
+# Run tests with coverage in Docker container
+coverage-docker:
+	@echo "Running tests with coverage in Docker..."
+	docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE) sh -c \
+		"$(GOTEST) -coverprofile=coverage.out -buildvcs=false ./... && $(GOCMD) tool cover -html=coverage.out -o coverage.html"
 	@echo "✓ Coverage report generated: coverage.html"
 
 # Format code
@@ -89,6 +105,13 @@ vet:
 
 # Run all checks
 check: fmt vet lint test
+	@echo "✓ All checks passed"
+
+# Run all checks in Docker container
+check-docker:
+	@echo "Running all checks in Docker..."
+	docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE) sh -c \
+		"$(GOFMT) -s -w . && $(GOVET) ./... && $(GOTEST) -v -buildvcs=false ./..."
 	@echo "✓ All checks passed"
 
 # Install dependencies
@@ -147,21 +170,24 @@ version:
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build the binary"
-	@echo "  build-all    - Build for all platforms"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  test         - Run tests"
-	@echo "  coverage     - Run tests with coverage"
-	@echo "  fmt          - Format code"
-	@echo "  lint         - Lint code"
-	@echo "  vet          - Vet code"
-	@echo "  check        - Run all checks (fmt, vet, lint, test)"
-	@echo "  deps         - Install dependencies"
-	@echo "  tidy         - Tidy dependencies"
-	@echo "  install      - Install binary to GOPATH/bin"
-	@echo "  uninstall    - Remove binary from GOPATH/bin"
-	@echo "  dev-setup    - Set up development environment"
-	@echo "  test-regions - Test the regions command"
-	@echo "  release-check- Prepare and check release artifacts"
-	@echo "  version      - Show version"
-	@echo "  help         - Show this help"
+	@echo "  build          - Build the binary"
+	@echo "  build-all      - Build for all platforms"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  test           - Run tests"
+	@echo "  test-docker    - Run tests in Docker container"
+	@echo "  coverage       - Run tests with coverage"
+	@echo "  coverage-docker- Run tests with coverage in Docker container"
+	@echo "  fmt            - Format code"
+	@echo "  lint           - Lint code"
+	@echo "  vet            - Vet code"
+	@echo "  check          - Run all checks (fmt, vet, lint, test)"
+	@echo "  check-docker   - Run all checks in Docker container"
+	@echo "  deps           - Install dependencies"
+	@echo "  tidy           - Tidy dependencies"
+	@echo "  install        - Install binary to GOPATH/bin"
+	@echo "  uninstall      - Remove binary from GOPATH/bin"
+	@echo "  dev-setup      - Set up development environment"
+	@echo "  test-regions   - Test the regions command"
+	@echo "  release-check  - Prepare and check release artifacts"
+	@echo "  version        - Show version"
+	@echo "  help           - Show this help"

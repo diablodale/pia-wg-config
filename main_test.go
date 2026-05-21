@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	binaryPath = bin.Name()
 	defer os.Remove(binaryPath)
 
-	build := exec.Command("go", "build", "-o", binaryPath, ".")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", binaryPath, ".")
 	build.Stdout = os.Stderr
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {

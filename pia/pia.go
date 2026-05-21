@@ -233,6 +233,12 @@ func (p *PIAClient) AddKey(token, publickey string) (AddKeyResult, error) {
 	return addKeyResp, nil
 }
 
+// ActiveServerCN returns the Common Name of the WireGuard server selected for this
+// client's region. Used by the WG generator to populate the port-forward state.
+func (p *PIAClient) ActiveServerCN() string {
+	return p.getWireguardServerForRegion().Cn
+}
+
 func (p *PIAClient) getWireguardServerForRegion() Server {
 	if p.verbose {
 		log.Print("Getting wireguard server for region: ", p.region)
