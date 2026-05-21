@@ -22,7 +22,7 @@ GOVET=$(GOCMD) vet
 DOCKER_IMAGE=mcr.microsoft.com/devcontainers/go:2-1.25-trixie
 
 # Build targets
-.PHONY: all build clean test test-docker coverage coverage-docker lint fmt vet check check-docker install uninstall deps tidy help
+.PHONY: all build build-docker clean test test-docker coverage coverage-docker lint fmt vet check check-docker install uninstall deps tidy help
 
 # Default target
 all: check build
@@ -32,6 +32,13 @@ build:
 	@echo "Building $(BINARY_NAME)..."
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH) $(MAIN_PACKAGE)
 	@echo "✓ Build complete: $(BINARY_PATH)"
+
+# Build the binary in Docker container
+build-docker:
+	@echo "Building $(BINARY_NAME) in Docker..."
+	docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE) \
+		$(GOBUILD) -buildvcs=false $(LDFLAGS) -o $(BINARY_PATH) $(MAIN_PACKAGE)
+	@echo "✓ Docker build complete: $(BINARY_PATH)"
 
 # Build for multiple platforms
 build-all: build-linux build-darwin build-windows
@@ -171,6 +178,7 @@ version:
 help:
 	@echo "Available targets:"
 	@echo "  build          - Build the binary"
+	@echo "  build-docker   - Build the binary in Docker container"
 	@echo "  build-all      - Build for all platforms"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  test           - Run tests"
