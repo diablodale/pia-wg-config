@@ -64,6 +64,10 @@ type PIAClient struct {
 	// tokenURL overrides productionTokenURL. Empty means use productionTokenURL.
 	// This field exists solely to allow unit tests to point GetToken() at a local httptest server.
 	tokenURL string
+	// serverListURL overrides the production server-list endpoint. Empty means use the
+	// production URL. This field exists solely to allow unit tests to inject a local
+	// httptest server instead of hitting the real PIA API.
+	serverListURL string
 }
 
 type piaServerList struct {
@@ -254,23 +258,32 @@ func (p *PIAClient) getWireguardServerForRegion() Server {
 func (p *PIAClient) getServerList() (piaServerList, error) {
 	var serverList piaServerList
 
-	resp, err := http.Get("https://serverlist.piaservers.net/vpninfo/servers/v4")
-	if err != nil {
-		return piaServerList{}, err
+	endpoint := "https://serverlist.piaservers.net/vpninfo/servers/v4"
+	if p.serverListURL != "" {
+		endpoint = p.serverListURL
 	}
 
-	// Strip the base64 garbage
-	respBytes, err := io.ReadAll(resp.Body)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Get(endpoint)
 	if err != nil {
 		return piaServerList{}, err
 	}
-	respString := string(respBytes)
-	lastBracketInd := strings.LastIndex(respString, "}")
-	safeJSON := respString[:lastBracketInd+1]
+	defer resp.Body.Close()
+
+	// The response body is a JSON object followed by a newline and a base64 blob
+	// (PIA appends extra data after the closing brace). Read only up to and
+	// including the last '}' so json.Unmarshal gets valid input.
+	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MiB cap
+	if err != nil {
+		return piaServerList{}, err
+	}
+	lastBrace := strings.LastIndex(string(respBytes), "}")
+	if lastBrace < 0 {
+		return piaServerList{}, errors.New("server list response contained no JSON object")
+	}
 
 	// Parse the JSON
-	err = json.Unmarshal([]byte(safeJSON), &serverList)
-	if err != nil {
+	if err = json.Unmarshal(respBytes[:lastBrace+1], &serverList); err != nil {
 		return piaServerList{}, err
 	}
 
@@ -342,6 +355,7 @@ func (p *PIAClient) executePIARequest(server Server, url string) (*http.Response
 	}
 
 	client := &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs: caCertPool,

@@ -1,6 +1,7 @@
 package pia
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -104,5 +105,24 @@ func TestPIAWgGenerator_generateKeys(t *testing.T) {
 				t.Errorf("PIAWgGenerator.generateKeys() got no keys")
 			}
 		})
+	}
+}
+
+func TestGenerateConfig_EmptyDNSServers(t *testing.T) {
+	// When AddKey returns no DNS servers, generateConfig must return an error
+	// rather than panicking on a nil/zero-length slice index.
+	gen := &PIAWgGenerator{}
+	key := AddKeyResult{
+		ServerIP:   "1.2.3.4",
+		DNSServers: []string{}, // empty — the guarded case
+		PeerIP:     "4.5.6.7",
+		ServerKey:  "test_serverkey",
+	}
+	_, err := gen.generateConfig(key, "test_privatekey")
+	if err == nil {
+		t.Fatal("expected error for empty DNSServers, got nil")
+	}
+	if !strings.Contains(err.Error(), "no DNS servers") {
+		t.Errorf("expected 'no DNS servers' in error, got: %v", err)
 	}
 }

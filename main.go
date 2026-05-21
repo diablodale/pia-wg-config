@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"pia-wg-config/pia"
 	cli "github.com/urfave/cli/v2"
+	"pia-wg-config/pia"
 )
 
 // version is stamped at build time via: -ldflags "-X main.version=$(git describe --tags)"

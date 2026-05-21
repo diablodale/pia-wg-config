@@ -45,7 +45,7 @@
 				"mcr.microsoft.com/devcontainers/go:2-1.25-trixie",
 				"sh",
 				"-c",
-				"gofmt -s -w . && go vet ./... && go test -v -buildvcs=false ./..."
+				"find . -name \"*.go\" -not -path \"./vendor/*\" | xargs gofmt -s -w && go vet ./... && go test -v -buildvcs=false ./..."
 			],
 			"group": "test",
 			"presentation": {

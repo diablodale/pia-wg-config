@@ -135,6 +135,10 @@ func (p *PIAWgGenerator) generateConfig(key AddKeyResult, privatekey string) (st
 		return "", errors.Wrap(err, "error parsing wireguard config template")
 	}
 
+	if len(key.DNSServers) == 0 {
+		return "", errors.New("PIA returned no DNS servers in AddKey response")
+	}
+
 	// execute template
 	tc := templateConfig{
 		PrivateKey:          privatekey,

@@ -85,7 +85,7 @@ coverage-docker:
 # Format code
 fmt:
 	@echo "Formatting code..."
-	$(GOFMT) -s -w .
+	find . -name '*.go' -not -path './vendor/*' | xargs $(GOFMT) -s -w
 	@echo "✓ Code formatted"
 
 # Lint code
@@ -111,7 +111,7 @@ check: fmt vet lint test
 check-docker:
 	@echo "Running all checks in Docker..."
 	docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE) sh -c \
-		"$(GOFMT) -s -w . && $(GOVET) ./... && $(GOTEST) -v -buildvcs=false ./..."
+		"find . -name '*.go' -not -path './vendor/*' | xargs gofmt -s -w && $(GOVET) ./... && $(GOTEST) -v -buildvcs=false ./..."
 	@echo "✓ All checks passed"
 
 # Install dependencies
