@@ -1,0 +1,75 @@
+networks:
+  # The prober uses this network — it has normal internet access, no VPN.
+  # The listener and vpn containers share a network namespace (network_mode: service:vpn),
+  # so they are intentionally NOT on this network.
+  external:
+
+services:
+
+  # ── VPN container ──────────────────────────────────────────────────────────
+  # Builds pia-wg-config from source, brings up the WireGuard tunnel, and runs
+  # the port-forward daemon.  Writes to the shared volume:
+  #   /shared/external-ip       — PIA exit IP seen from the internet
+  #   /shared/forwarding-port   — port number PIA assigned
+  vpn:
+    build:
+      context: ..
+      dockerfile: integration-test/vpn.dockerfile
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    environment:
+      - PIAWGCONFIG_USER
+      - PIAWGCONFIG_PW
+      - PIA_REGION=${PIA_REGION:-swiss}
+    tmpfs:
+      - /tmp
+      - /run
+      - /etc/wireguard
+    volumes:
+      - shared:/shared
+    # Healthy once the forwarding port has been written — meaning the tunnel is
+    # up AND a port has been successfully bound with PIA.
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /shared/forwarding-port"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 12
+
+  # ── Listener container ─────────────────────────────────────────────────────
+  # Shares the vpn container's network namespace so it listens on the WireGuard
+  # peer IP.  Accepts TCP connections on the forwarded port.  PIA will route
+  # inbound internet traffic on that port here.
+  listener:
+    image: alpine:3.21
+    network_mode: service:vpn
+    depends_on:
+      vpn:
+        condition: service_healthy
+    volumes:
+      - shared:/shared
+      - ./listener.sh:/listener.sh:ro
+    command: ["sh", "/listener.sh"]
+
+  # ── Prober container ───────────────────────────────────────────────────────
+  # Runs on the normal internet (NOT through the VPN).  Reads the external IP
+  # and port from the shared volume, then attempts a TCP connection to
+  # <pia-exit-ip>:<forwarded-port>.  Exit code 0 = port forwarding works.
+  prober:
+    image: alpine:3.21
+    networks:
+      - external
+    depends_on:
+      listener:
+        condition: service_started
+    volumes:
+      - shared:/shared
+      - ./prober.sh:/prober.sh:ro
+    command: ["sh", "/prober.sh"]
+
+volumes:
+  shared:
